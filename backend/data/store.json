@@ -1,0 +1,34 @@
+{
+  "clients": [
+    {
+      "id": "c1",
+      "company_name": "Aster Motors Pvt Ltd",
+      "country": "India",
+      "entity_type": "Private Limited"
+    },
+    {
+      "id": "c2",
+      "company_name": "Northwind Analytics LLC",
+      "country": "United States",
+      "entity_type": "LLC"
+    },
+    {
+      "id": "c3",
+      "company_name": "Bluefin Retail Pte",
+      "country": "Singapore",
+      "entity_type": "Pte Ltd"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "t1",
+      "client_id": "c1",
+      "title": "GST Monthly Return",
+      "description": "File GSTR-3B for current month",
+      "category": "Tax",
+      "due_date": "2026-03-22",
+      "status": "Pending",
+      "priority": "High"
+    }
+  ]
+}
