@@ -18,6 +18,12 @@ To run once:
 bun run start
 ```
 
+To run build (type-check):
+
+```bash
+bun run build
+```
+
 API base URL: `http://localhost:3001`
 
 Endpoints:
