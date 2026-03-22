@@ -1,30 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import type { Client, ComplianceTask, NewTaskForm, TaskPriority, TaskStatus } from '../types/compliance'
-import { CATEGORIES, LOCAL_STORAGE_KEY } from '../utils/constants'
+import { CATEGORIES } from '../utils/constants'
 import { isTaskOverdue } from '../utils/date'
-import { seedClients, seedTasks } from '../utils/seedData'
-
-type StoredData = {
-  clients: Client[]
-  tasks: ComplianceTask[]
-}
-
-const getInitialData = (): StoredData => {
-  const fallback = { clients: seedClients, tasks: seedTasks }
-
-  try {
-    const raw = localStorage.getItem(LOCAL_STORAGE_KEY)
-    if (!raw) return fallback
-
-    const parsed = JSON.parse(raw) as { clients?: Client[]; tasks?: ComplianceTask[] }
-    if (!parsed.clients || !parsed.tasks) return fallback
-
-    return { clients: parsed.clients, tasks: parsed.tasks }
-  } catch {
-    return fallback
-  }
-}
+import { createTask, getClients, getTasksForClient, updateTaskStatus } from '../utils/api'
 
 const defaultTaskForm: NewTaskForm = {
   title: '',
@@ -35,29 +14,82 @@ const defaultTaskForm: NewTaskForm = {
 }
 
 export const useComplianceTracker = () => {
-  const initialData = getInitialData()
-
-  const [clients] = useState<Client[]>(initialData.clients)
-  const [tasks, setTasks] = useState<ComplianceTask[]>(initialData.tasks)
-  const [selectedClientId, setSelectedClientId] = useState<string>(initialData.clients[0]?.id ?? '')
+  const [clients, setClients] = useState<Client[]>([])
+  const [tasks, setTasks] = useState<ComplianceTask[]>([])
+  const [selectedClientId, setSelectedClientId] = useState<string>('')
   const [statusFilter, setStatusFilter] = useState<string>('All')
   const [categoryFilter, setCategoryFilter] = useState<string>('All')
   const [newTask, setNewTask] = useState<NewTaskForm>(defaultTaskForm)
   const [formError, setFormError] = useState<string>('')
+  const [isLoading, setIsLoading] = useState<boolean>(true)
+  const [apiError, setApiError] = useState<string>('')
 
   useEffect(() => {
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({ clients, tasks }))
-  }, [clients, tasks])
+    let cancelled = false
+
+    const loadClients = async () => {
+      setIsLoading(true)
+      setApiError('')
+
+      try {
+        const fetchedClients = await getClients()
+        if (cancelled) return
+
+        setClients(fetchedClients)
+        setSelectedClientId((current) => current || fetchedClients[0]?.id || '')
+      } catch (error) {
+        if (!cancelled) {
+          setApiError(error instanceof Error ? error.message : 'Failed to load clients.')
+        }
+      } finally {
+        if (!cancelled) setIsLoading(false)
+      }
+    }
+
+    void loadClients()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!selectedClientId) {
+      setTasks([])
+      return
+    }
+
+    let cancelled = false
+
+    const loadTasks = async () => {
+      setIsLoading(true)
+      setApiError('')
+
+      try {
+        const fetchedTasks = await getTasksForClient(selectedClientId)
+        if (!cancelled) setTasks(fetchedTasks)
+      } catch (error) {
+        if (!cancelled) {
+          setApiError(error instanceof Error ? error.message : 'Failed to load tasks.')
+        }
+      } finally {
+        if (!cancelled) setIsLoading(false)
+      }
+    }
+
+    void loadTasks()
+
+    return () => {
+      cancelled = true
+    }
+  }, [selectedClientId])
 
   const selectedClient = useMemo(
     () => clients.find((client) => client.id === selectedClientId) ?? null,
     [clients, selectedClientId],
   )
 
-  const clientTasks = useMemo(
-    () => tasks.filter((task) => task.clientId === selectedClientId),
-    [tasks, selectedClientId],
-  )
+  const clientTasks = tasks
 
   const categories = useMemo(() => {
     const all = new Set<string>(CATEGORIES)
@@ -83,7 +115,18 @@ export const useComplianceTracker = () => {
   }, [clientTasks])
 
   const handleStatusChange = (taskId: string, status: TaskStatus) => {
+    const previousTasks = tasks
     setTasks((current) => current.map((task) => (task.id === taskId ? { ...task, status } : task)))
+    setApiError('')
+
+    void updateTaskStatus(taskId, status)
+      .then((updatedTask) => {
+        setTasks((current) => current.map((task) => (task.id === taskId ? updatedTask : task)))
+      })
+      .catch((error) => {
+        setTasks(previousTasks)
+        setApiError(error instanceof Error ? error.message : 'Failed to update task status.')
+      })
   }
 
   const handleTaskFieldChange = (field: keyof NewTaskForm, value: string | TaskPriority) => {
@@ -108,20 +151,21 @@ export const useComplianceTracker = () => {
       return
     }
 
-    const createdTask: ComplianceTask = {
-      id: `t-${Date.now()}`,
-      clientId: selectedClientId,
+    setFormError('')
+    setApiError('')
+
+    void createTask(selectedClientId, {
+      ...newTask,
       title: newTask.title.trim(),
       description: newTask.description.trim(),
-      category: newTask.category,
-      dueDate: newTask.dueDate,
-      status: 'Pending',
-      priority: newTask.priority,
-    }
-
-    setTasks((current) => [createdTask, ...current])
-    setNewTask(defaultTaskForm)
-    setFormError('')
+    })
+      .then((createdTask) => {
+        setTasks((current) => [createdTask, ...current])
+        setNewTask(defaultTaskForm)
+      })
+      .catch((error) => {
+        setFormError(error instanceof Error ? error.message : 'Failed to create task.')
+      })
   }
 
   return {
@@ -138,6 +182,8 @@ export const useComplianceTracker = () => {
     stats,
     newTask,
     formError,
+    isLoading,
+    apiError,
     handleTaskFieldChange,
     handleAddTask,
     handleStatusChange,

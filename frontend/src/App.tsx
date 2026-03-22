@@ -20,6 +20,8 @@ function App() {
     stats,
     newTask,
     formError,
+    isLoading,
+    apiError,
     handleTaskFieldChange,
     handleAddTask,
     handleStatusChange,
@@ -42,6 +44,12 @@ function App() {
         />
 
         <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          {apiError ? (
+            <p className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+              {apiError}
+            </p>
+          ) : null}
+
           <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <h2 className="text-lg font-semibold text-slate-900">
@@ -62,7 +70,11 @@ function App() {
             onCategoryFilterChange={setCategoryFilter}
           />
 
-          <TaskList tasks={filteredTasks} onStatusChange={handleStatusChange} />
+          {isLoading ? (
+            <p className="text-sm text-slate-500">Loading tasks...</p>
+          ) : (
+            <TaskList tasks={filteredTasks} onStatusChange={handleStatusChange} />
+          )}
         </section>
 
         <AddTaskForm
